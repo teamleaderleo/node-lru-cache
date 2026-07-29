@@ -43,33 +43,35 @@ t.test('background fetch size tests', async t => {
   await t.rejects(p3, new Error('evicted'))
 })
 
-t.test('backgroundFetchSize must be a nonnegative integer', t => {
-  const invalidValues: unknown[] = [
-    -1,
-    1.5,
-    Number.NaN,
-    Number.POSITIVE_INFINITY,
-    Number.NEGATIVE_INFINITY,
-    '2',
-    true,
-    1n,
-    Symbol('2'),
-    null,
-    {},
-    [],
-  ]
+const invalidBackgroundFetchSizes: unknown[] = [
+  -1,
+  1.5,
+  Number.NaN,
+  Number.POSITIVE_INFINITY,
+  Number.NEGATIVE_INFINITY,
+  '2',
+  true,
+  1n,
+  Symbol('2'),
+  null,
+  {},
+  [],
+]
 
-  for (const backgroundFetchSize of invalidValues) {
+const invalidBackgroundFetchSizeError = {
+  name: 'TypeError',
+  message: 'backgroundFetchSize must be a nonnegative integer',
+}
+
+t.test('backgroundFetchSize must be a nonnegative integer', t => {
+  for (const backgroundFetchSize of invalidBackgroundFetchSizes) {
     t.throws(
       () =>
         new LRUCache({
           max: 1,
           backgroundFetchSize: backgroundFetchSize as number,
         }),
-      {
-        name: 'TypeError',
-        message: 'backgroundFetchSize must be a nonnegative integer',
-      },
+      invalidBackgroundFetchSizeError,
       String(backgroundFetchSize),
     )
   }
@@ -77,6 +79,31 @@ t.test('backgroundFetchSize must be a nonnegative integer', t => {
   t.doesNotThrow(() => new LRUCache({ max: 1, backgroundFetchSize: 0 }))
   t.doesNotThrow(() => new LRUCache({ max: 1, backgroundFetchSize: 1 }))
   t.end()
+})
+
+t.test('mutated backgroundFetchSize is validated before fetch dispatch', async t => {
+  let fetchCalls = 0
+  const c = new LRUCache<number, number>({
+    maxSize: 10,
+    sizeCalculation: () => 5,
+    fetchMethod: async key => {
+      fetchCalls++
+      return key
+    },
+  })
+
+  for (const [index, backgroundFetchSize] of invalidBackgroundFetchSizes.entries()) {
+    c.backgroundFetchSize = backgroundFetchSize as number
+    await t.rejects(
+      c.fetch(index),
+      invalidBackgroundFetchSizeError,
+      String(backgroundFetchSize),
+    )
+  }
+
+  t.equal(fetchCalls, 0)
+  t.equal(c.size, 0)
+  t.equal(c.calculatedSize, 0)
 })
 
 t.test('backgroundFetchSize 0 retains in-flight coalescing', async t => {
