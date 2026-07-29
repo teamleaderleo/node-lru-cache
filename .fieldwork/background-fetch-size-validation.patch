@@ -34,12 +34,18 @@ diff --git a/src/index.ts b/src/index.ts
      this.backgroundFetchSize = backgroundFetchSize
  
      if (perf !== undefined) {
-@@ -2490,6 +2502,13 @@ export class LRUCache<K extends {}, V extends {}, FC = unknown> {
+@@ -2490,6 +2502,17 @@ export class LRUCache<K extends {}, V extends {}, FC = unknown> {
      if (this.#isBackgroundFetch(v)) {
        return v
      }
 +
-+    if (index === undefined && !isNonNegativeInt(this.backgroundFetchSize)) {
++    // backgroundFetchSize only participates when size tracking is active and
++    // there is no stale entry whose existing size can be reused.
++    if (
++      index === undefined &&
++      this.#sizes !== undefined &&
++      !isNonNegativeInt(this.backgroundFetchSize)
++    ) {
 +      throw new TypeError(
 +        'backgroundFetchSize must be a nonnegative integer',
 +      )
