@@ -1,0 +1,28 @@
+diff --git a/src/index.ts b/src/index.ts
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -944,6 +944,8 @@ export namespace LRUCache {
+      * replace. If not, then this value is used as its effective size.
+      *
+      * @default 1
++     *
++     * Must be a nonnegative integer if provided.
+      */
+     backgroundFetchSize?: number
+ 
+@@ -1452,6 +1454,15 @@ export class LRUCache<K extends {}, V extends {}, FC = unknown> {
+       perf,
+     } = options
+ 
++    if (
++      typeof backgroundFetchSize !== 'number' ||
++      (backgroundFetchSize !== 0 && !isPosInt(backgroundFetchSize))
++    ) {
++      throw new TypeError(
++        'backgroundFetchSize must be a nonnegative integer',
++      )
++    }
++
+     this.backgroundFetchSize = backgroundFetchSize
+ 
+     if (perf !== undefined) {
