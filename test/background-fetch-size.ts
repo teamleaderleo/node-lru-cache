@@ -92,7 +92,8 @@ t.test('mutated backgroundFetchSize is validated before fetch dispatch', async t
     },
   })
 
-  for (const [index, backgroundFetchSize] of invalidBackgroundFetchSizes.entries()) {
+  for (const [index, backgroundFetchSize] of
+    invalidBackgroundFetchSizes.entries()) {
     c.backgroundFetchSize = backgroundFetchSize as number
     await t.rejects(
       c.fetch(index),
@@ -104,6 +105,22 @@ t.test('mutated backgroundFetchSize is validated before fetch dispatch', async t
   t.equal(fetchCalls, 0)
   t.equal(c.size, 0)
   t.equal(c.calculatedSize, 0)
+})
+
+t.test('mutated backgroundFetchSize is ignored without size tracking', async t => {
+  let fetchCalls = 0
+  const c = new LRUCache<number, number>({
+    max: 1,
+    fetchMethod: async key => {
+      fetchCalls++
+      return key
+    },
+  })
+
+  c.backgroundFetchSize = '2' as unknown as number
+  t.equal(await c.fetch(1), 1)
+  t.equal(fetchCalls, 1)
+  t.equal(c.size, 1)
 })
 
 t.test('backgroundFetchSize 0 retains in-flight coalescing', async t => {
