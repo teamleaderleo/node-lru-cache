@@ -139,6 +139,35 @@ t.test('fetch snapshots size across callback mutation', async t => {
   }
 })
 
+t.test('valid mutation applies only to the next fetch', async t => {
+  const deferred = new Map<number, PromiseWithResolvers<number>>()
+  let c: LRUCache<number, number>
+  c = new LRUCache<number, number>({
+    maxSize: 20,
+    sizeCalculation: () => 5,
+    backgroundFetchSize: 2,
+    fetchMethod: async key => {
+      if (key === 1) {
+        c.backgroundFetchSize = 4
+      }
+      const result = Promise.withResolvers<number>()
+      deferred.set(key, result)
+      return result.promise
+    },
+  })
+
+  const first = c.fetch(1)
+  t.equal(c.calculatedSize, 2)
+
+  const second = c.fetch(2)
+  t.equal(c.calculatedSize, 6)
+
+  deferred.get(1)?.resolve(1)
+  deferred.get(2)?.resolve(2)
+  t.same(await Promise.all([first, second]), [1, 2])
+  t.equal(c.calculatedSize, 10)
+})
+
 t.test('mutated size is ignored without size tracking', async t => {
   let fetchCalls = 0
   const c = new LRUCache<number, number>({
