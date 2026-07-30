@@ -1,17 +1,15 @@
 import t from 'tap'
 import { LRUCache, type BackgroundFetch } from '../dist/esm/node/index.js'
 
-const clock = t.clock
-clock.advance(1)
-clock.enter()
-
 t.test('background fetch size tests', async t => {
   const res: Record<number, (n: number) => void> = {}
+  let now = 1
   const c = new LRUCache<number, number>({
     maxSize: 10,
     sizeCalculation: () => 5,
     allowStale: true,
     ttl: 10,
+    perf: { now: () => now },
     // never returns on purpose
     fetchMethod: k =>
       new Promise<number>(r => {
@@ -24,7 +22,7 @@ t.test('background fetch size tests', async t => {
   c.set(1, 1)
   t.match(await p1, new Error('replaced'))
   t.equal(c.calculatedSize, 5)
-  clock.advance(100)
+  now += 100
   t.equal(c.getRemainingTTL(1), -90)
   // verify correct behavior of a fetch that shadows a stale value
   const p = c.fetch(1)
@@ -253,7 +251,7 @@ t.test('corrupt internal provisional size is rejected on reinsertion', async t =
   t.equal(c.calculatedSize, 5)
 })
 
-t.test('ttl autopurge reschedules when its timer fires before expiry', t => {
+t.test('ttl autopurge reschedules when its timer fires before expiry', async t => {
   const c = new LRUCache<number, number>({
     ttl: 10,
     ttlAutopurge: true,
@@ -264,11 +262,16 @@ t.test('ttl autopurge reschedules when its timer fires before expiry', t => {
   const internals = LRUCache.unsafeExposeInternals(c)
   const index = internals.keyMap.get(1)
   t.type(index, 'number')
-  internals.starts![index as number] += 10
+  const firstTimer = internals.autopurgeTimers![index as number]
+  t.ok(firstTimer)
 
-  clock.advance(11)
+  // Move the recorded start into the future without replacing the timer. When
+  // the original timer fires it must take the non-stale branch and reschedule.
+  internals.starts![index as number] += 2_000
+  await new Promise(resolve => setTimeout(resolve, 50))
+
   t.equal(c.size, 1)
-  clock.advance(11)
-  t.equal(c.size, 0)
-  t.end()
+  t.ok(internals.autopurgeTimers![index as number])
+  t.not(internals.autopurgeTimers![index as number], firstTimer)
+  c.clear()
 })
