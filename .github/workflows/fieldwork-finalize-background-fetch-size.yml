@@ -1,0 +1,62 @@
+name: Finalize background fetch size source repair
+
+on:
+  push:
+    branches:
+      - repair/background-fetch-size-source
+    paths:
+      - '.github/workflows/fieldwork-finalize-background-fetch-size.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-background-fetch-size-source
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source branch
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: repair/background-fetch-size-source
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Apply exact source patch
+        run: |
+          git apply --check .fieldwork/background-fetch-size-validation.patch
+          git apply .fieldwork/background-fetch-size-validation.patch
+          git diff --check
+
+      - name: Install exact dependencies
+        run: npm install
+
+      - name: Verify candidate
+        run: |
+          npm run prepare
+          npx tap --disable-coverage test/background-fetch-size.ts
+          npx oxlint src/index.ts test/background-fetch-size.ts
+          npx prettier --check src/index.ts test/background-fetch-size.ts
+
+      - name: Publish source-only branch
+        run: |
+          rm .fieldwork/background-fetch-size-validation.patch
+          rm .github/workflows/fieldwork-finalize-background-fetch-size.yml
+          git diff --check
+          git config user.name fieldwork-ci
+          git config user.email fieldwork-ci@users.noreply.github.com
+          git add src/index.ts test/background-fetch-size.ts \
+            .fieldwork/background-fetch-size-validation.patch \
+            .github/workflows/fieldwork-finalize-background-fetch-size.yml
+          git commit -m 'fix: validate background fetch size at consumption'
+          git push origin HEAD:repair/background-fetch-size-source
