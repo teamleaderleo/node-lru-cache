@@ -253,20 +253,22 @@ t.test('corrupt internal provisional size is rejected on reinsertion', async t =
   t.equal(c.calculatedSize, 5)
 })
 
-t.test('ttl autopurge reschedules after an age update', t => {
+t.test('ttl autopurge reschedules when its timer fires before expiry', t => {
   const c = new LRUCache<number, number>({
     ttl: 10,
     ttlAutopurge: true,
     ttlResolution: 0,
-    updateAgeOnGet: true,
   })
 
   c.set(1, 1)
-  clock.advance(5)
-  t.equal(c.get(1), 1)
-  clock.advance(6)
+  const internals = LRUCache.unsafeExposeInternals(c)
+  const index = internals.keyMap.get(1)
+  t.type(index, 'number')
+  internals.starts![index as number] += 10
+
+  clock.advance(11)
   t.equal(c.size, 1)
-  clock.advance(5)
+  clock.advance(11)
   t.equal(c.size, 0)
   t.end()
 })
