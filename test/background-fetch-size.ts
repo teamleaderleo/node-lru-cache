@@ -234,17 +234,21 @@ t.test('corrupt internal provisional size is rejected on reinsertion', async t =
     fetchMethod: async () => deferred.promise,
   })
 
-  const fetch = c.fetch(1) as BackgroundFetch<number>
-  fetch.__size = Number.NaN
+  const publicFetch = c.fetch(1)
+  const internals = LRUCache.unsafeExposeInternals(c)
+  const index = internals.keyMap.get(1)
+  t.type(index, 'number')
+  const backgroundFetch = internals.valList[index as number] as BackgroundFetch<number>
+  backgroundFetch.__size = Number.NaN
 
   t.throws(
-    () => c.set(2, fetch as unknown as number),
+    () => c.set(2, backgroundFetch as unknown as number),
     invalidBackgroundFetchSizeError,
   )
   t.equal(c.size, 1)
   t.equal(c.calculatedSize, 2)
 
   deferred.resolve(1)
-  t.equal(await fetch, 1)
+  t.equal(await publicFetch, 1)
   t.equal(c.calculatedSize, 5)
 })
