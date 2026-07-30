@@ -107,6 +107,36 @@ t.test('mutated backgroundFetchSize is validated before fetch dispatch', async t
   t.equal(c.calculatedSize, 0)
 })
 
+t.test('fetch uses a validated size snapshot across synchronous callback mutation', async t => {
+  for (const [index, mutatedSize] of ['2', Number.NaN, -1].entries()) {
+    const deferred = Promise.withResolvers<number>()
+    let fetchCalls = 0
+    let c: LRUCache<number, number>
+    c = new LRUCache<number, number>({
+      maxSize: 10,
+      sizeCalculation: () => 5,
+      backgroundFetchSize: 2,
+      fetchMethod: async () => {
+        fetchCalls++
+        c.backgroundFetchSize = mutatedSize as unknown as number
+        return deferred.promise
+      },
+    })
+
+    const first = c.fetch(index)
+    const second = c.fetch(index)
+
+    t.equal(fetchCalls, 1, String(mutatedSize))
+    t.equal(c.size, 1, String(mutatedSize))
+    t.equal(c.calculatedSize, 2, String(mutatedSize))
+
+    deferred.resolve(index)
+    t.same(await Promise.all([first, second]), [index, index])
+    t.equal(c.size, 1, String(mutatedSize))
+    t.equal(c.calculatedSize, 5, String(mutatedSize))
+  }
+})
+
 t.test('mutated backgroundFetchSize is ignored without size tracking', async t => {
   let fetchCalls = 0
   const c = new LRUCache<number, number>({
