@@ -1,18 +1,24 @@
 diff --git a/src/index.ts b/src/index.ts
 --- a/src/index.ts
 +++ b/src/index.ts
-@@ -45,6 +45,9 @@ export type PosInt = number & { [TYPE]: 'Positive Integer' }
- export type Index = number & { [TYPE]: 'LRUCache Index' }
- 
+@@ -47,5 +47,8 @@
  const isPosInt = (n: unknown): n is PosInt =>
    !!n && n === Math.floor(n as number) && n > 0 && isFinite(n)
-+
+ 
 +const isNonNegativeInt = (n: unknown): n is number =>
 +  typeof n === 'number' && (n === 0 || isPosInt(n))
- 
++
  export type UintArray = Uint8Array | Uint16Array | Uint32Array
  export type NumberArray = UintArray | number[]
-@@ -944,6 +947,8 @@ export namespace LRUCache {
+@@ -113,6 +113,7 @@
+   __returned: BackgroundFetch<V> | undefined
+   __abortController: AbortController
+   __staleWhileFetching: V | undefined
++  __size: number | undefined
+ }
+ 
+ export type DisposeTask<K, V> = [
+@@ -944,6 +944,8 @@
       * replace. If not, then this value is used as its effective size.
       *
       * @default 1
@@ -21,35 +27,57 @@ diff --git a/src/index.ts b/src/index.ts
       */
      backgroundFetchSize?: number
  
-@@ -1452,6 +1457,13 @@ export class LRUCache<K extends {}, V extends {}, FC = unknown> {
+@@ -1452,5 +1452,11 @@
        perf,
      } = options
- 
++
 +    if (!isNonNegativeInt(backgroundFetchSize)) {
 +      throw new TypeError(
 +        'backgroundFetchSize must be a nonnegative integer',
 +      )
 +    }
-+
+ 
      this.backgroundFetchSize = backgroundFetchSize
  
-     if (perf !== undefined) {
-@@ -2490,6 +2502,17 @@ export class LRUCache<K extends {}, V extends {}, FC = unknown> {
-     if (this.#isBackgroundFetch(v)) {
+@@ -1741,7 +1741,13 @@
+           // NB: this cannot occur if v.__staleWhileFetching is set,
+           // because in that case, it would take on the size of the
+           // existing entry that it temporarily replaces.
+-          return this.backgroundFetchSize
++          const backgroundFetchSize = v.__size
++          if (!isNonNegativeInt(backgroundFetchSize)) {
++            throw new TypeError(
++              'backgroundFetchSize must be a nonnegative integer',
++            )
++          }
++          return backgroundFetchSize
+         }
+         if (sizeCalculation) {
+           if (typeof sizeCalculation !== 'function') {
+@@ -2491,5 +2491,18 @@
        return v
      }
-+
-+    // backgroundFetchSize only participates when size tracking is active and
-+    // there is no stale entry whose existing size can be reused.
-+    if (
-+      index === undefined &&
-+      this.#sizes !== undefined &&
-+      !isNonNegativeInt(this.backgroundFetchSize)
-+    ) {
-+      throw new TypeError(
-+        'backgroundFetchSize must be a nonnegative integer',
-+      )
-+    }
  
++    // Capture the provisional size before invoking user fetchMethod code.
++    // Accounting must consume this validated snapshot rather than re-reading
++    // the mutable public field after the synchronous Promise executor returns.
++    let backgroundFetchSize: number | undefined
++    if (index === undefined && this.#sizes !== undefined) {
++      backgroundFetchSize = this.backgroundFetchSize
++      if (!isNonNegativeInt(backgroundFetchSize)) {
++        throw new TypeError(
++          'backgroundFetchSize must be a nonnegative integer',
++        )
++      }
++    }
++
      const ac = new AbortController()
      const { signal } = options
+@@ -2608,6 +2608,7 @@
+       __abortController: ac,
+       __staleWhileFetching: v,
+       __returned: undefined,
++      __size: backgroundFetchSize,
+     })
+ 
+     if (index === undefined) {
