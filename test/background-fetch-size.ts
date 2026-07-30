@@ -81,7 +81,7 @@ t.test('backgroundFetchSize must be a nonnegative integer', t => {
   t.end()
 })
 
-t.test('mutated backgroundFetchSize is validated before fetch dispatch', async t => {
+t.test('mutated size is validated before fetch dispatch', async t => {
   let fetchCalls = 0
   const c = new LRUCache<number, number>({
     maxSize: 10,
@@ -107,7 +107,7 @@ t.test('mutated backgroundFetchSize is validated before fetch dispatch', async t
   t.equal(c.calculatedSize, 0)
 })
 
-t.test('fetch uses a validated size snapshot across synchronous callback mutation', async t => {
+t.test('fetch snapshots size across callback mutation', async t => {
   for (const [index, mutatedSize] of ['2', Number.NaN, -1].entries()) {
     const deferred = Promise.withResolvers<number>()
     let fetchCalls = 0
@@ -137,7 +137,7 @@ t.test('fetch uses a validated size snapshot across synchronous callback mutatio
   }
 })
 
-t.test('mutated backgroundFetchSize is ignored without size tracking', async t => {
+t.test('mutated size is ignored without size tracking', async t => {
   let fetchCalls = 0
   const c = new LRUCache<number, number>({
     max: 1,
@@ -178,7 +178,7 @@ t.test('backgroundFetchSize 0 retains in-flight coalescing', async t => {
   t.equal(c.calculatedSize, 5)
 })
 
-t.test('custom backgroundFetchSize is used while a fetch is pending', async t => {
+t.test('custom size is used while a fetch is pending', async t => {
   const deferred = Promise.withResolvers<number>()
   const c = new LRUCache<number, number>({
     maxSize: 10,
