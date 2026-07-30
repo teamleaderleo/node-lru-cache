@@ -268,7 +268,13 @@ t.test('ttl autopurge reschedules when its timer fires before expiry', async t =
   // Move the recorded start into the future without replacing the timer. When
   // the original timer fires it must take the non-stale branch and reschedule.
   internals.starts![index as number] += 2_000
-  await new Promise(resolve => setTimeout(resolve, 50))
+  const deadline = Date.now() + 2_000
+  while (
+    internals.autopurgeTimers![index as number] === firstTimer &&
+    Date.now() < deadline
+  ) {
+    await new Promise(resolve => setTimeout(resolve, 5))
+  }
 
   t.equal(c.size, 1)
   t.ok(internals.autopurgeTimers![index as number])
