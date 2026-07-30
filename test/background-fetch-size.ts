@@ -1,5 +1,5 @@
 import t from 'tap'
-import { LRUCache } from '../dist/esm/node/index.js'
+import { LRUCache, type BackgroundFetch } from '../dist/esm/node/index.js'
 
 const clock = t.clock
 clock.advance(1)
@@ -220,6 +220,30 @@ t.test('custom size is used while a fetch is pending', async t => {
 
   const fetch = c.fetch(1)
   t.equal(c.calculatedSize, 2)
+  deferred.resolve(1)
+  t.equal(await fetch, 1)
+  t.equal(c.calculatedSize, 5)
+})
+
+t.test('corrupt internal provisional size is rejected on reinsertion', async t => {
+  const deferred = Promise.withResolvers<number>()
+  const c = new LRUCache<number, number>({
+    maxSize: 10,
+    sizeCalculation: () => 5,
+    backgroundFetchSize: 2,
+    fetchMethod: async () => deferred.promise,
+  })
+
+  const fetch = c.fetch(1) as BackgroundFetch<number>
+  fetch.__size = Number.NaN
+
+  t.throws(
+    () => c.set(2, fetch as unknown as number),
+    invalidBackgroundFetchSizeError,
+  )
+  t.equal(c.size, 1)
+  t.equal(c.calculatedSize, 2)
+
   deferred.resolve(1)
   t.equal(await fetch, 1)
   t.equal(c.calculatedSize, 5)
