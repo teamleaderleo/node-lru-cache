@@ -92,8 +92,10 @@ t.test('mutated size is validated before fetch dispatch', async t => {
     },
   })
 
-  for (const [index, backgroundFetchSize] of
-    invalidBackgroundFetchSizes.entries()) {
+  for (const [
+    index,
+    backgroundFetchSize,
+  ] of invalidBackgroundFetchSizes.entries()) {
     c.backgroundFetchSize = backgroundFetchSize as number
     await t.rejects(
       c.fetch(index),
