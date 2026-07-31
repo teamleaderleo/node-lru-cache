@@ -46,7 +46,7 @@ t.test('rejected fetch removes a synchronous same-key write', async t => {
   const fetching = cache.fetch(1)
   deferred.reject(new Error('fetch failed'))
 
-  await t.rejects(fetching, new Error('fetch failed'))
+  await t.rejects(fetching, { message: 'fetch failed' })
   t.equal(cache.has(1), false)
   t.equal(cache.peek(1), undefined)
 })
