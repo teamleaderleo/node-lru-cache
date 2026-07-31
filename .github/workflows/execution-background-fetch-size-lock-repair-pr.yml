@@ -58,7 +58,7 @@ jobs:
         run: npm run prepare
 
       - name: Run focused background-fetch-size controls
-        run: npx tap -c -t0 test/background-fetch-size.ts
+        run: npm exec -- tap -t0 test/background-fetch-size.ts
 
       - name: Run complete repository tests
         run: npm test -- -c -t0
