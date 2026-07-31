@@ -1,0 +1,53 @@
+name: Background fetch size lock repair
+
+on:
+  push:
+    branches:
+      - execution/background-fetch-size-lock-repair
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out canonical candidate
+        uses: actions/checkout@v6
+        with:
+          ref: repair/background-fetch-size-source
+          fetch-depth: 0
+
+      - name: Repair exported type and locked plugin dependency
+        shell: bash
+        run: |
+          set -euxo pipefail
+          node <<'NODE'
+          const fs = require('node:fs')
+          const path = 'src/index.ts'
+          const before = fs.readFileSync(path, 'utf8')
+          const needle = '  __size: number | undefined\n'
+          const count = before.split(needle).length - 1
+          if (count !== 1) {
+            throw new Error(`expected one required __size field, found ${count}`)
+          }
+          fs.writeFileSync(path, before.replace(needle, '  __size?: number\n'))
+          NODE
+          npm install \
+            --save-dev \
+            --save-exact \
+            --package-lock-only \
+            --ignore-scripts \
+            @tapjs/clock@3.3.10
+          git diff --check
+
+      - name: Commit canonical repair
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/index.ts package.json package-lock.json
+          git diff --cached --stat
+          git commit -m "Repair background fetch size type and test plugin"
+          git push origin HEAD:repair/background-fetch-size-source
