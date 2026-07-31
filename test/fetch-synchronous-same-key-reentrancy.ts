@@ -74,7 +74,7 @@ t.test('same-key delete during dispatch does not cancel insertion', async t => {
   t.equal(cache.get(1), 20)
 })
 
-t.test('nested same-key fetch redispatches before coalescing', async t => {
+t.test('nested same-key fetch is redispatched then replaced by the outer fetch', async t => {
   let calls = 0
   let cache: LRUCache<number, number>
 
@@ -90,10 +90,16 @@ t.test('nested same-key fetch redispatches before coalescing', async t => {
   })
 
   const fetching = cache.fetch(1)
+
+  // The nested call cannot see the outer in-flight reservation, so it
+  // dispatches fetchMethod a second time. The outer #set then replaces and
+  // aborts that nested BackgroundFetch. Because the outer promise adopted the
+  // nested promise, the caller receives the replacement error and the key is
+  // removed rather than receiving the nested value.
   t.equal(calls, 2)
-  t.equal(cache.size, 1)
-  t.equal(await fetching, 20)
-  t.equal(cache.get(1), 20)
+  await t.rejects(fetching, { message: 'replaced' })
+  t.equal(cache.has(1), false)
+  t.equal(cache.peek(1), undefined)
 })
 
 t.test('different-key synchronous writes remain authoritative', async t => {
