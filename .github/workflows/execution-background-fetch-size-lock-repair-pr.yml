@@ -1,4 +1,4 @@
-name: Background fetch size lock repair PR
+name: Background fetch size exact-head execution
 
 on:
   pull_request:
@@ -6,49 +6,63 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  repair:
+  test:
     if: github.head_ref == 'execution/background-fetch-size-lock-repair'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            node: 24.x
+            shell: bash
+          - os: macos-latest
+            node: 24.x
+            shell: bash
+          - os: windows-latest
+            node: 24.x
+            shell: bash
+          - os: windows-latest
+            node: 24.x
+            shell: powershell
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
     steps:
-      - name: Check out canonical candidate
+      - name: Check out exact canonical candidate
         uses: actions/checkout@v6
         with:
-          ref: repair/background-fetch-size-source
-          fetch-depth: 0
+          ref: fef8328c9431b656c0ee48547250e37d6caeabef
+          persist-credentials: false
 
-      - name: Repair exported type and locked plugin dependency
+      - name: Verify exact source fence
         shell: bash
         run: |
-          set -euxo pipefail
-          node <<'NODE'
-          const fs = require('node:fs')
-          const path = 'src/index.ts'
-          const before = fs.readFileSync(path, 'utf8')
-          const needle = '  __size: number | undefined\n'
-          const count = before.split(needle).length - 1
-          if (count !== 1) {
-            throw new Error(`expected one required __size field, found ${count}`)
-          }
-          fs.writeFileSync(path, before.replace(needle, '  __size?: number\n'))
-          NODE
-          npm install \
-            --save-dev \
-            --save-exact \
-            --package-lock-only \
-            --ignore-scripts \
-            @tapjs/clock@3.3.10
-          git diff --check
+          test "$(git rev-parse HEAD)" = "fef8328c9431b656c0ee48547250e37d6caeabef"
+          grep -F "  __size?: number" src/index.ts
+          grep -F '"@tapjs/clock": "3.3.10"' package.json
+          test -z "$(git status --porcelain)"
 
-      - name: Commit canonical repair
+      - name: Use Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Build declarations and distributions
+        run: npm run prepare
+
+      - name: Run focused background-fetch-size controls
+        run: npx tap -c -t0 test/background-fetch-size.ts
+
+      - name: Run complete repository tests
+        run: npm test -- -c -t0
+
+      - name: Confirm clean source tree
         shell: bash
-        run: |
-          set -euxo pipefail
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/index.ts package.json package-lock.json
-          git diff --cached --stat
-          git commit -m "Repair background fetch size type and test plugin"
-          git push origin HEAD:repair/background-fetch-size-source
+        run: test -z "$(git status --porcelain --untracked-files=no)"
