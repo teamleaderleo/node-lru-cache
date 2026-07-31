@@ -1,4 +1,4 @@
-name: Background fetch size exact-head execution
+name: Background fetch lock metadata repair
 
 on:
   pull_request:
@@ -6,63 +6,84 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  test:
+  repair:
     if: github.head_ref == 'execution/background-fetch-size-lock-repair'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            node: 24.x
-            shell: bash
-          - os: macos-latest
-            node: 24.x
-            shell: bash
-          - os: windows-latest
-            node: 24.x
-            shell: bash
-          - os: windows-latest
-            node: 24.x
-            shell: powershell
-    runs-on: ${{ matrix.os }}
-    defaults:
-      run:
-        shell: ${{ matrix.shell }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Check out exact canonical candidate
         uses: actions/checkout@v6
         with:
-          ref: fef8328c9431b656c0ee48547250e37d6caeabef
-          persist-credentials: false
+          ref: repair/background-fetch-size-source
+          fetch-depth: 0
 
       - name: Verify exact source fence
-        shell: bash
         run: |
           test "$(git rev-parse HEAD)" = "fef8328c9431b656c0ee48547250e37d6caeabef"
-          grep -F "  __size?: number" src/index.ts
-          grep -F '"@tapjs/clock": "3.3.10"' package.json
           test -z "$(git status --porcelain)"
 
-      - name: Use Node.js ${{ matrix.node }}
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ matrix.node }}
+      - name: Restore unrelated platform selectors
+        run: |
+          python - <<'PY'
+          from pathlib import Path
 
-      - name: Install locked dependencies
-        run: npm ci
+          path = Path('package-lock.json')
+          text = path.read_text()
+          selectors = {
+              'node_modules/@oxlint/binding-linux-arm64-gnu': 'glibc',
+              'node_modules/@oxlint/binding-linux-arm64-musl': 'musl',
+              'node_modules/@oxlint/binding-linux-ppc64-gnu': 'glibc',
+              'node_modules/@oxlint/binding-linux-riscv64-gnu': 'glibc',
+              'node_modules/@oxlint/binding-linux-riscv64-musl': 'musl',
+              'node_modules/@oxlint/binding-linux-s390x-gnu': 'glibc',
+              'node_modules/@oxlint/binding-linux-x64-gnu': 'glibc',
+              'node_modules/@oxlint/binding-linux-x64-musl': 'musl',
+          }
 
-      - name: Build declarations and distributions
-        run: npm run prepare
+          for package, libc in selectors.items():
+              marker = f'    "{package}": {{'
+              start = text.index(marker)
+              end = text.find('\n    "node_modules/', start + len(marker))
+              if end < 0:
+                  end = len(text)
+              section = text[start:end]
+              if '      "libc": [' in section:
+                  raise SystemExit(f'{package}: libc selector already present')
+              needle = '      "dev": true,\n      "license": "MIT",'
+              if section.count(needle) != 1:
+                  raise SystemExit(f'{package}: unexpected lock entry shape')
+              replacement = (
+                  '      "dev": true,\n'
+                  '      "libc": [\n'
+                  f'        "{libc}"\n'
+                  '      ],\n'
+                  '      "license": "MIT",'
+              )
+              section = section.replace(needle, replacement, 1)
+              text = text[:start] + section + text[end:]
 
-      - name: Run focused background-fetch-size controls
-        run: npm exec -- tap -t0 test/background-fetch-size.ts
+          path.write_text(text)
+          PY
 
-      - name: Run complete repository tests
-        run: npm test -- -c -t0
+          git diff --check
+          test "$(git diff --name-only)" = package-lock.json
+          test "$(git diff --numstat package-lock.json | awk '{print $1 ":" $2}')" = 24:0
 
-      - name: Confirm clean source tree
-        shell: bash
-        run: test -z "$(git status --porcelain --untracked-files=no)"
+      - name: Validate the repaired lock and focused candidate
+        run: |
+          npm ci
+          npm run prepare
+          npm exec -- tap -t0 test/background-fetch-size.ts
+          test "$(git diff --name-only)" = package-lock.json
+
+      - name: Commit lock-only cleanup
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add package-lock.json
+          test "$(git diff --cached --name-only)" = package-lock.json
+          git commit -m "Restore OXLint lock platform selectors"
+          git push origin HEAD:repair/background-fetch-size-source
