@@ -4,7 +4,8 @@ import { LRUCache } from '../dist/esm/node/index.js'
 /**
  * Characterization only: fetchMethod runs synchronously inside the Promise
  * executor, before the new BackgroundFetch promise is installed in the cache.
- * These controls record what happens when that callback mutates the same key.
+ * These controls record what happens when that callback mutates or fetches the
+ * same key.
  */
 t.test('synchronous same-key set is replaced by the pending fetch', async t => {
   const deferred = Promise.withResolvers<number>()
@@ -69,6 +70,28 @@ t.test('same-key delete during dispatch does not cancel insertion', async t => {
   t.equal(cache.peek(1), undefined)
 
   deferred.resolve(20)
+  t.equal(await fetching, 20)
+  t.equal(cache.get(1), 20)
+})
+
+t.test('nested same-key fetch redispatches before coalescing', async t => {
+  let calls = 0
+  let cache: LRUCache<number, number>
+
+  cache = new LRUCache<number, number>({
+    max: 10,
+    fetchMethod: key => {
+      calls++
+      if (calls === 1) {
+        return cache.fetch(key)
+      }
+      return 20
+    },
+  })
+
+  const fetching = cache.fetch(1)
+  t.equal(calls, 2)
+  t.equal(cache.size, 1)
   t.equal(await fetching, 20)
   t.equal(cache.get(1), 20)
 })
