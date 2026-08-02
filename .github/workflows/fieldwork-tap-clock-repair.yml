@@ -22,11 +22,11 @@ jobs:
           ref: repair/tap-clock-dev-dependency
           fetch-depth: 0
 
-      - name: Guard initial source identity
+      - name: Guard corrected source identity
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "9b34894f98523400494d6d92fdd38fc24b2b60d1"
+          test "$(git rev-parse HEAD)" = "507f9de187d19766c7ed8b455e707304ee069c50"
           test -z "$(git status --porcelain)"
 
       - name: Set up Node.js
@@ -35,27 +35,26 @@ jobs:
           node-version: 24.18.0
           cache: npm
 
-      - name: Pin configured plugin and generate lockfile
+      - name: Generate exact lockfile
         shell: bash
         run: |
           set -euo pipefail
-          npm pkg set 'devDependencies.@tapjs/clock=3.3.4'
           npm install --package-lock-only --ignore-scripts
           node - <<'NODE'
           const pkg = require('./package.json')
           const lock = require('./package-lock.json')
-          if (pkg.devDependencies['@tapjs/clock'] !== '3.3.4') {
-            throw new Error('package.json does not pin @tapjs/clock 3.3.4')
+          if (pkg.devDependencies['@tapjs/clock'] !== '3.3.10') {
+            throw new Error('package.json does not pin @tapjs/clock 3.3.10')
           }
-          if (lock.packages[''].devDependencies['@tapjs/clock'] !== '3.3.4') {
-            throw new Error('root lock declaration is missing @tapjs/clock 3.3.4')
+          if (lock.packages[''].devDependencies['@tapjs/clock'] !== '3.3.10') {
+            throw new Error('root lock declaration is missing @tapjs/clock 3.3.10')
           }
           const installed = lock.packages['node_modules/@tapjs/clock']
-          if (!installed || installed.version !== '3.3.4') {
-            throw new Error('lockfile does not resolve @tapjs/clock 3.3.4')
+          if (!installed || installed.version !== '3.3.10') {
+            throw new Error('lockfile does not resolve @tapjs/clock 3.3.10')
           }
           NODE
-          test "$(git status --short | cut -c4- | sort)" = $'package-lock.json\npackage.json'
+          test "$(git status --short | cut -c4- | sort)" = 'package-lock.json'
           git diff --check
 
       - name: Publish exact two-file harness repair
@@ -64,9 +63,10 @@ jobs:
           set -euo pipefail
           git config user.name fieldwork-repair-bot
           git config user.email fieldwork-repair-bot@users.noreply.github.com
-          git add package.json package-lock.json
-          test "$(git diff --cached --name-only | sort)" = $'package-lock.json\npackage.json'
-          git commit -m "test: declare configured tap clock plugin"
+          git add package-lock.json
+          test "$(git diff --cached --name-only)" = 'package-lock.json'
+          git commit -m "test: lock configured tap clock plugin"
+          test "$(git diff --name-only 16b3a916662ab449d496b7b4b4f04132565d1d28...HEAD | sort)" = $'package-lock.json\npackage.json'
           git push origin HEAD:repair/tap-clock-dev-dependency
 
   validate:
@@ -100,8 +100,8 @@ jobs:
           node - <<'NODE'
           const pkg = require('./package.json')
           const lock = require('./package-lock.json')
-          if (pkg.devDependencies['@tapjs/clock'] !== '3.3.4') throw new Error('wrong package declaration')
-          if (lock.packages['node_modules/@tapjs/clock']?.version !== '3.3.4') throw new Error('wrong lock resolution')
+          if (pkg.devDependencies['@tapjs/clock'] !== '3.3.10') throw new Error('wrong package declaration')
+          if (lock.packages['node_modules/@tapjs/clock']?.version !== '3.3.10') throw new Error('wrong lock resolution')
           NODE
           test -z "$(git status --porcelain)"
 
