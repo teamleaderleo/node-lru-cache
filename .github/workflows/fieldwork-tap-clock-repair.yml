@@ -1,0 +1,126 @@
+name: Fieldwork TAP clock repair
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  materialize-lock:
+    if: >-
+      github.repository == 'teamleaderleo/node-lru-cache' &&
+      github.head_ref == 'ci/tap-clock-dev-dependency'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out exact source branch
+        uses: actions/checkout@v6
+        with:
+          ref: repair/tap-clock-dev-dependency
+          fetch-depth: 0
+
+      - name: Guard initial source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "9b34894f98523400494d6d92fdd38fc24b2b60d1"
+          test -z "$(git status --porcelain)"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.18.0
+          cache: npm
+
+      - name: Pin configured plugin and generate lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm pkg set 'devDependencies.@tapjs/clock=3.3.4'
+          npm install --package-lock-only --ignore-scripts
+          node - <<'NODE'
+          const pkg = require('./package.json')
+          const lock = require('./package-lock.json')
+          if (pkg.devDependencies['@tapjs/clock'] !== '3.3.4') {
+            throw new Error('package.json does not pin @tapjs/clock 3.3.4')
+          }
+          if (lock.packages[''].devDependencies['@tapjs/clock'] !== '3.3.4') {
+            throw new Error('root lock declaration is missing @tapjs/clock 3.3.4')
+          }
+          const installed = lock.packages['node_modules/@tapjs/clock']
+          if (!installed || installed.version !== '3.3.4') {
+            throw new Error('lockfile does not resolve @tapjs/clock 3.3.4')
+          }
+          NODE
+          test "$(git status --short | cut -c4- | sort)" = $'package-lock.json\npackage.json'
+          git diff --check
+
+      - name: Publish exact two-file harness repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name fieldwork-repair-bot
+          git config user.email fieldwork-repair-bot@users.noreply.github.com
+          git add package.json package-lock.json
+          test "$(git diff --cached --name-only | sort)" = $'package-lock.json\npackage.json'
+          git commit -m "test: declare configured tap clock plugin"
+          git push origin HEAD:repair/tap-clock-dev-dependency
+
+  validate:
+    needs: materialize-lock
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - name: Check out repaired dependency graph
+        uses: actions/checkout@v6
+        with:
+          ref: repair/tap-clock-dev-dependency
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.18.0
+          cache: npm
+
+      - name: Verify source fence and plugin identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git diff --name-only 16b3a916662ab449d496b7b4b4f04132565d1d28...HEAD | sort)" = $'package-lock.json\npackage.json'
+          node - <<'NODE'
+          const pkg = require('./package.json')
+          const lock = require('./package-lock.json')
+          if (pkg.devDependencies['@tapjs/clock'] !== '3.3.4') throw new Error('wrong package declaration')
+          if (lock.packages['node_modules/@tapjs/clock']?.version !== '3.3.4') throw new Error('wrong lock resolution')
+          NODE
+          test -z "$(git status --porcelain)"
+
+      - name: Install exact graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm ci
+          node -e "console.log(require.resolve('@tapjs/clock'))"
+
+      - name: Run repository test command
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test -- -c -t0
+
+      - name: Verify clean tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check 16b3a916662ab449d496b7b4b4f04132565d1d28...HEAD
+          test -z "$(git status --porcelain)"
