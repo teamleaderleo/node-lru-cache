@@ -95,8 +95,8 @@ t.test('backgroundFetchSize must be a nonnegative integer', t => {
     )
   }
 
-  t.doesNotThrow(() =>
-    new LRUCache({ max: 1, backgroundFetchSize: undefined }),
+  t.doesNotThrow(
+    () => new LRUCache({ max: 1, backgroundFetchSize: undefined }),
   )
   t.doesNotThrow(() => new LRUCache({ max: 1, backgroundFetchSize: 0 }))
   t.doesNotThrow(() => new LRUCache({ max: 1, backgroundFetchSize: 1 }))
@@ -278,61 +278,69 @@ t.test('custom size is used while a fetch is pending', async t => {
   t.equal(c.calculatedSize, 5)
 })
 
-t.test('corrupt internal provisional size is rejected on reinsertion', async t => {
-  const deferred = Promise.withResolvers<number>()
-  const c = new LRUCache<number, number>({
-    maxSize: 10,
-    sizeCalculation: () => 5,
-    backgroundFetchSize: 2,
-    fetchMethod: async () => deferred.promise,
-  })
+t.test(
+  'corrupt internal provisional size is rejected on reinsertion',
+  async t => {
+    const deferred = Promise.withResolvers<number>()
+    const c = new LRUCache<number, number>({
+      maxSize: 10,
+      sizeCalculation: () => 5,
+      backgroundFetchSize: 2,
+      fetchMethod: async () => deferred.promise,
+    })
 
-  const publicFetch = c.fetch(1)
-  const internals = LRUCache.unsafeExposeInternals(c)
-  const index = internals.keyMap.get(1)
-  t.type(index, 'number')
-  const backgroundFetch = internals.valList[index as number] as BackgroundFetch<number>
-  backgroundFetch.__size = Number.NaN
+    const publicFetch = c.fetch(1)
+    const internals = LRUCache.unsafeExposeInternals(c)
+    const index = internals.keyMap.get(1)
+    t.type(index, 'number')
+    const backgroundFetch = internals.valList[
+      index as number
+    ] as BackgroundFetch<number>
+    backgroundFetch.__size = Number.NaN
 
-  t.throws(
-    () => c.set(2, backgroundFetch as unknown as number),
-    invalidBackgroundFetchSizeError,
-  )
-  t.equal(c.size, 1)
-  t.equal(c.calculatedSize, 2)
+    t.throws(
+      () => c.set(2, backgroundFetch as unknown as number),
+      invalidBackgroundFetchSizeError,
+    )
+    t.equal(c.size, 1)
+    t.equal(c.calculatedSize, 2)
 
-  deferred.resolve(1)
-  t.equal(await publicFetch, 1)
-  t.equal(c.calculatedSize, 5)
-})
+    deferred.resolve(1)
+    t.equal(await publicFetch, 1)
+    t.equal(c.calculatedSize, 5)
+  },
+)
 
-t.test('ttl autopurge reschedules when its timer fires before expiry', async t => {
-  const c = new LRUCache<number, number>({
-    ttl: 10,
-    ttlAutopurge: true,
-    ttlResolution: 0,
-  })
+t.test(
+  'ttl autopurge reschedules when its timer fires before expiry',
+  async t => {
+    const c = new LRUCache<number, number>({
+      ttl: 10,
+      ttlAutopurge: true,
+      ttlResolution: 0,
+    })
 
-  c.set(1, 1)
-  const internals = LRUCache.unsafeExposeInternals(c)
-  const index = internals.keyMap.get(1)
-  t.type(index, 'number')
-  const firstTimer = internals.autopurgeTimers![index as number]
-  t.ok(firstTimer)
+    c.set(1, 1)
+    const internals = LRUCache.unsafeExposeInternals(c)
+    const index = internals.keyMap.get(1)
+    t.type(index, 'number')
+    const firstTimer = internals.autopurgeTimers![index as number]
+    t.ok(firstTimer)
 
-  // Move the recorded start into the future without replacing the timer. When
-  // the original timer fires it must take the non-stale branch and reschedule.
-  internals.starts![index as number] += 2_000
-  const deadline = Date.now() + 2_000
-  while (
-    internals.autopurgeTimers![index as number] === firstTimer &&
-    Date.now() < deadline
-  ) {
-    await new Promise(resolve => setTimeout(resolve, 5))
-  }
+    // Move the recorded start into the future without replacing the timer. When
+    // the original timer fires it must take the non-stale branch and reschedule.
+    internals.starts![index as number] += 2_000
+    const deadline = Date.now() + 2_000
+    while (
+      internals.autopurgeTimers![index as number] === firstTimer &&
+      Date.now() < deadline
+    ) {
+      await new Promise(resolve => setTimeout(resolve, 5))
+    }
 
-  t.equal(c.size, 1)
-  t.ok(internals.autopurgeTimers![index as number])
-  t.not(internals.autopurgeTimers![index as number], firstTimer)
-  c.clear()
-})
+    t.equal(c.size, 1)
+    t.ok(internals.autopurgeTimers![index as number])
+    t.not(internals.autopurgeTimers![index as number], firstTimer)
+    c.clear()
+  },
+)
