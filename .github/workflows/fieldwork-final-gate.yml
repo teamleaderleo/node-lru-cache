@@ -1,0 +1,25 @@
+name: Fieldwork unit 07 final gate
+
+on:
+  pull_request:
+    branches:
+      - repair/background-fetch-size-source
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install
+      - run: npx tap --disable-coverage test/background-fetch-size.ts
+      - run: npx oxlint src/index.ts test/background-fetch-size.ts --deny-warnings
+      - run: npx prettier --check src/index.ts test/background-fetch-size.ts
+      - run: git diff --check
+      - run: test -z "$(git status --short)"
