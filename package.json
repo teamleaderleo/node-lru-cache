@@ -77,7 +77,7 @@
     "url": "git+ssh://git@github.com/isaacs/node-lru-cache.git"
   },
   "devDependencies": {
-    "@tapjs/clock": "^3.3.4",
+    "@tapjs/clock": "3.3.10",
     "benchmark": "^2.1.4",
     "esbuild": "^0.28.0",
     "marked": "^4.2.12",
