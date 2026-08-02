@@ -1,0 +1,31 @@
+name: Fieldwork format dump
+
+on:
+  pull_request:
+    branches:
+      - repair/background-fetch-size-source
+
+permissions:
+  contents: write
+
+jobs:
+  format-dump:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm install
+      - run: npx prettier --write test/background-fetch-size.ts
+      - name: Publish exact formatted file
+        shell: bash
+        run: |
+          git config user.name fieldwork-bot
+          git config user.email fieldwork-bot@users.noreply.github.com
+          git add test/background-fetch-size.ts
+          git commit -m 'style: apply repository formatter'
+          git push origin HEAD:fieldwork/unit-07-formatted-output --force
