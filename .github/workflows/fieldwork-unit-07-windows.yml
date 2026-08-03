@@ -27,7 +27,7 @@ jobs:
           cache: npm
       - run: npm install
       - name: Install baseline-declared Tap plugin without source changes
-        run: npm install --no-save --package-lock=false @tapjs/clock
+        run: npm install --no-save --package-lock=false @tapjs/clock@3.3.10
       - name: Run complete repository suite
         run: npm test -- -c -t0
       - name: Verify canonical files remain formatted
