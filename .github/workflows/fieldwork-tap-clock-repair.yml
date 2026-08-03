@@ -6,84 +6,20 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  materialize-lock:
+  validate-repaired-ubuntu:
     if: >-
       github.repository == 'teamleaderleo/node-lru-cache' &&
       github.head_ref == 'ci/tap-clock-dev-dependency'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Check out exact source branch
-        uses: actions/checkout@v6
-        with:
-          ref: repair/tap-clock-dev-dependency
-          fetch-depth: 0
-
-      - name: Guard corrected source identity
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "507f9de187d19766c7ed8b455e707304ee069c50"
-          test -z "$(git status --porcelain)"
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24.18.0
-          cache: npm
-
-      - name: Generate exact lockfile
-        shell: bash
-        run: |
-          set -euo pipefail
-          npm install --package-lock-only --ignore-scripts
-          node - <<'NODE'
-          const pkg = require('./package.json')
-          const lock = require('./package-lock.json')
-          if (pkg.devDependencies['@tapjs/clock'] !== '3.3.10') {
-            throw new Error('package.json does not pin @tapjs/clock 3.3.10')
-          }
-          if (lock.packages[''].devDependencies['@tapjs/clock'] !== '3.3.10') {
-            throw new Error('root lock declaration is missing @tapjs/clock 3.3.10')
-          }
-          const installed = lock.packages['node_modules/@tapjs/clock']
-          if (!installed || installed.version !== '3.3.10') {
-            throw new Error('lockfile does not resolve @tapjs/clock 3.3.10')
-          }
-          NODE
-          test "$(git status --short | cut -c4- | sort)" = 'package-lock.json'
-          git diff --check
-
-      - name: Publish exact two-file harness repair
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name fieldwork-repair-bot
-          git config user.email fieldwork-repair-bot@users.noreply.github.com
-          git add package-lock.json
-          test "$(git diff --cached --name-only)" = 'package-lock.json'
-          git commit -m "test: lock configured tap clock plugin"
-          test "$(git diff --name-only 16b3a916662ab449d496b7b4b4f04132565d1d28...HEAD | sort)" = $'package-lock.json\npackage.json'
-          git push origin HEAD:repair/tap-clock-dev-dependency
-
-  validate:
-    needs: materialize-lock
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
-      - name: Check out repaired dependency graph
+      - name: Check out exact repaired graph
         uses: actions/checkout@v6
         with:
-          ref: repair/tap-clock-dev-dependency
+          ref: 18430cc21147d1122d4b7a5ba94d96488d736326
           fetch-depth: 0
 
       - name: Set up Node.js
@@ -92,10 +28,11 @@ jobs:
           node-version: 24.18.0
           cache: npm
 
-      - name: Verify source fence and plugin identity
+      - name: Verify exact two-file repair
         shell: bash
         run: |
           set -euo pipefail
+          test "$(git rev-parse HEAD)" = "18430cc21147d1122d4b7a5ba94d96488d736326"
           test "$(git diff --name-only 16b3a916662ab449d496b7b4b4f04132565d1d28...HEAD | sort)" = $'package-lock.json\npackage.json'
           node - <<'NODE'
           const pkg = require('./package.json')
@@ -105,22 +42,103 @@ jobs:
           NODE
           test -z "$(git status --porcelain)"
 
-      - name: Install exact graph
+      - name: Install and run complete repository tests
         shell: bash
         run: |
           set -euo pipefail
           npm ci
           node -e "console.log(require.resolve('@tapjs/clock'))"
-
-      - name: Run repository test command
-        shell: bash
-        run: |
-          set -euo pipefail
           npm test -- -c -t0
-
-      - name: Verify clean tree
-        shell: bash
-        run: |
-          set -euo pipefail
           git diff --check 16b3a916662ab449d496b7b4b4f04132565d1d28...HEAD
           test -z "$(git status --porcelain)"
+
+  classify-windows-exit:
+    if: >-
+      github.repository == 'teamleaderleo/node-lru-cache' &&
+      github.head_ref == 'ci/tap-clock-dev-dependency'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      NO_COLOR: '1'
+      FORCE_COLOR: '0'
+      TAP_COLOR: '0'
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@v6
+        with:
+          ref: 16b3a916662ab449d496b7b4b4f04132565d1d28
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.18.0
+          cache: npm
+
+      - name: Run unchanged base with configured plugin injected
+        id: base
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "16b3a916662ab449d496b7b4b4f04132565d1d28"
+          npm ci
+          npm install --no-save --package-lock=false --ignore-scripts @tapjs/clock@3.3.10
+          node -e "console.log(require.resolve('@tapjs/clock'))"
+          test -z "$(git status --porcelain)"
+
+          set +e
+          npm test -- -c -t0 > base-coverage.log 2>&1
+          coverage_status=$?
+          npm test -- -t0 > base-no-coverage.log 2>&1
+          no_coverage_status=$?
+          set -e
+
+          cat base-coverage.log
+          cat base-no-coverage.log
+          grep -F '0 fail' base-coverage.log
+          grep -F '0 fail' base-no-coverage.log
+          printf 'base_coverage_status=%s\n' "$coverage_status" >> "$GITHUB_OUTPUT"
+          printf 'base_no_coverage_status=%s\n' "$no_coverage_status" >> "$GITHUB_OUTPUT"
+
+      - name: Run repaired graph under identical commands
+        id: repaired
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clean -ffdx
+          git checkout --force 18430cc21147d1122d4b7a5ba94d96488d736326
+          test "$(git rev-parse HEAD)" = "18430cc21147d1122d4b7a5ba94d96488d736326"
+          test "$(git diff --name-only 16b3a916662ab449d496b7b4b4f04132565d1d28...HEAD | sort)" = $'package-lock.json\npackage.json'
+          npm ci
+          node -e "console.log(require.resolve('@tapjs/clock'))"
+
+          set +e
+          npm test -- -c -t0 > repaired-coverage.log 2>&1
+          coverage_status=$?
+          npm test -- -t0 > repaired-no-coverage.log 2>&1
+          no_coverage_status=$?
+          set -e
+
+          cat repaired-coverage.log
+          cat repaired-no-coverage.log
+          grep -F '0 fail' repaired-coverage.log
+          grep -F '0 fail' repaired-no-coverage.log
+          printf 'repaired_coverage_status=%s\n' "$coverage_status" >> "$GITHUB_OUTPUT"
+          printf 'repaired_no_coverage_status=%s\n' "$no_coverage_status" >> "$GITHUB_OUTPUT"
+          test -z "$(git status --porcelain)"
+
+      - name: Classify dependency repair separately from Windows exit
+        shell: bash
+        env:
+          BASE_COVERAGE: ${{ steps.base.outputs.base_coverage_status }}
+          BASE_NO_COVERAGE: ${{ steps.base.outputs.base_no_coverage_status }}
+          REPAIRED_COVERAGE: ${{ steps.repaired.outputs.repaired_coverage_status }}
+          REPAIRED_NO_COVERAGE: ${{ steps.repaired.outputs.repaired_no_coverage_status }}
+        run: |
+          set -euo pipefail
+          printf 'base coverage=%s no-coverage=%s\n' "$BASE_COVERAGE" "$BASE_NO_COVERAGE"
+          printf 'repaired coverage=%s no-coverage=%s\n' "$REPAIRED_COVERAGE" "$REPAIRED_NO_COVERAGE"
+          test "$BASE_COVERAGE" = "$REPAIRED_COVERAGE"
+          test "$BASE_NO_COVERAGE" = "$REPAIRED_NO_COVERAGE"
+          test "$BASE_NO_COVERAGE" -eq 0
+          printf 'FIELDWORK_TAP_CLOCK=dependency-repair-independent-of-windows-exit\n'
