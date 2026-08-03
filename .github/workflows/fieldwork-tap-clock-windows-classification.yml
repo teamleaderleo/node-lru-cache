@@ -1,0 +1,99 @@
+name: Fieldwork TAP clock Windows classification
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    if: >-
+      github.repository == 'teamleaderleo/node-lru-cache' &&
+      github.head_ref == 'ci/tap-clock-dev-dependency'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      NO_COLOR: '1'
+      FORCE_COLOR: '0'
+      TAP_COLOR: '0'
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v6
+        with:
+          ref: 16b3a916662ab449d496b7b4b4f04132565d1d28
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.18.0
+          cache: npm
+
+      - name: Run unchanged base with plugin injected
+        id: base
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "16b3a916662ab449d496b7b4b4f04132565d1d28"
+          npm ci
+          npm install --no-save --package-lock=false --ignore-scripts @tapjs/clock@3.3.10
+          node -e "console.log(require.resolve('@tapjs/clock'))"
+
+          set +e
+          npm test -- -c -t0 > base-coverage.log 2>&1
+          coverage_status=$?
+          npm test -- -t0 > base-no-coverage.log 2>&1
+          no_coverage_status=$?
+          set -e
+
+          cat base-coverage.log
+          cat base-no-coverage.log
+          grep -F '0 fail' base-coverage.log
+          grep -F '0 fail' base-no-coverage.log
+          printf 'coverage=%s\n' "$coverage_status" >> "$GITHUB_OUTPUT"
+          printf 'no_coverage=%s\n' "$no_coverage_status" >> "$GITHUB_OUTPUT"
+
+      - name: Run repaired graph under identical commands
+        id: repaired
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clean -ffdx
+          git checkout --force 18430cc21147d1122d4b7a5ba94d96488d736326
+          test "$(git rev-parse HEAD)" = "18430cc21147d1122d4b7a5ba94d96488d736326"
+          test "$(git diff --name-only 16b3a916662ab449d496b7b4b4f04132565d1d28...HEAD | sort)" = $'package-lock.json\npackage.json'
+          npm ci
+          node -e "console.log(require.resolve('@tapjs/clock'))"
+
+          set +e
+          npm test -- -c -t0 > repaired-coverage.log 2>&1
+          coverage_status=$?
+          npm test -- -t0 > repaired-no-coverage.log 2>&1
+          no_coverage_status=$?
+          set -e
+
+          cat repaired-coverage.log
+          cat repaired-no-coverage.log
+          grep -F '0 fail' repaired-coverage.log
+          grep -F '0 fail' repaired-no-coverage.log
+          printf 'coverage=%s\n' "$coverage_status" >> "$GITHUB_OUTPUT"
+          printf 'no_coverage=%s\n' "$no_coverage_status" >> "$GITHUB_OUTPUT"
+
+      - name: Classify dependency repair separately from Windows exit
+        shell: bash
+        env:
+          BASE_COVERAGE: ${{ steps.base.outputs.coverage }}
+          BASE_NO_COVERAGE: ${{ steps.base.outputs.no_coverage }}
+          REPAIRED_COVERAGE: ${{ steps.repaired.outputs.coverage }}
+          REPAIRED_NO_COVERAGE: ${{ steps.repaired.outputs.no_coverage }}
+        run: |
+          set -euo pipefail
+          printf 'base coverage=%s no-coverage=%s\n' "$BASE_COVERAGE" "$BASE_NO_COVERAGE"
+          printf 'repaired coverage=%s no-coverage=%s\n' "$REPAIRED_COVERAGE" "$REPAIRED_NO_COVERAGE"
+          test "$BASE_COVERAGE" = "$REPAIRED_COVERAGE"
+          test "$BASE_NO_COVERAGE" = "$REPAIRED_NO_COVERAGE"
+          test "$BASE_NO_COVERAGE" -eq 0
+          printf 'FIELDWORK_TAP_CLOCK=dependency-repair-independent-of-windows-exit\n'
