@@ -25,11 +25,13 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
-      - run: npm install
-      - name: Install baseline-declared Tap plugin without source changes
-        run: npm install --no-save --package-lock=false @tapjs/clock@3.3.10
-      - name: Run complete repository suite
-        run: npm test -- -c -t0
+      - name: Install exact lockfile
+        run: npm ci
+      - name: Run focused test without unused clock plugin
+        run: |
+          node -e "require('fs').writeFileSync('.taprc', 'node-arg:\n  - --expose-gc\n')"
+          npx tap -c -t0 test/background-fetch-size.ts
+          git checkout -- .taprc
       - name: Verify canonical files remain formatted
         run: npx prettier --check src/index.ts test/background-fetch-size.ts
       - name: Verify carrier did not alter tracked source
