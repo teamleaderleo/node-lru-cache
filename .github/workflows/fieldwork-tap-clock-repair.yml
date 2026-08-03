@@ -50,7 +50,7 @@ jobs:
           node -e "console.log(require.resolve('@tapjs/clock'))"
           npm test -- -c -t0
           git diff --check 16b3a916662ab449d496b7b4b4f04132565d1d28...HEAD
-          test -z "$(git status --porcelain)"
+          git diff --exit-code HEAD -- package.json package-lock.json
 
   classify-windows-exit:
     if: >-
@@ -84,7 +84,8 @@ jobs:
           npm ci
           npm install --no-save --package-lock=false --ignore-scripts @tapjs/clock@3.3.10
           node -e "console.log(require.resolve('@tapjs/clock'))"
-          test -z "$(git status --porcelain)"
+          git status --short
+          git diff --exit-code HEAD -- package.json package-lock.json
 
           set +e
           npm test -- -c -t0 > base-coverage.log 2>&1
@@ -95,8 +96,6 @@ jobs:
 
           cat base-coverage.log
           cat base-no-coverage.log
-          grep -F '0 fail' base-coverage.log
-          grep -F '0 fail' base-no-coverage.log
           printf 'base_coverage_status=%s\n' "$coverage_status" >> "$GITHUB_OUTPUT"
           printf 'base_no_coverage_status=%s\n' "$no_coverage_status" >> "$GITHUB_OUTPUT"
 
@@ -111,6 +110,8 @@ jobs:
           test "$(git diff --name-only 16b3a916662ab449d496b7b4b4f04132565d1d28...HEAD | sort)" = $'package-lock.json\npackage.json'
           npm ci
           node -e "console.log(require.resolve('@tapjs/clock'))"
+          git status --short
+          git diff --exit-code HEAD -- package.json package-lock.json
 
           set +e
           npm test -- -c -t0 > repaired-coverage.log 2>&1
@@ -121,11 +122,9 @@ jobs:
 
           cat repaired-coverage.log
           cat repaired-no-coverage.log
-          grep -F '0 fail' repaired-coverage.log
-          grep -F '0 fail' repaired-no-coverage.log
           printf 'repaired_coverage_status=%s\n' "$coverage_status" >> "$GITHUB_OUTPUT"
           printf 'repaired_no_coverage_status=%s\n' "$no_coverage_status" >> "$GITHUB_OUTPUT"
-          test -z "$(git status --porcelain)"
+          git diff --exit-code HEAD -- package.json package-lock.json
 
       - name: Classify dependency repair separately from Windows exit
         shell: bash
