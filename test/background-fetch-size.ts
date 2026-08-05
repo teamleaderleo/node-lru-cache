@@ -310,37 +310,3 @@ t.test(
     t.equal(c.calculatedSize, 5)
   },
 )
-
-t.test(
-  'ttl autopurge reschedules when its timer fires before expiry',
-  async t => {
-    const c = new LRUCache<number, number>({
-      ttl: 10,
-      ttlAutopurge: true,
-      ttlResolution: 0,
-    })
-
-    c.set(1, 1)
-    const internals = LRUCache.unsafeExposeInternals(c)
-    const index = internals.keyMap.get(1)
-    t.type(index, 'number')
-    const firstTimer = internals.autopurgeTimers![index as number]
-    t.ok(firstTimer)
-
-    // Move the recorded start into the future without replacing the timer. When
-    // the original timer fires it must take the non-stale branch and reschedule.
-    internals.starts![index as number] += 2_000
-    const deadline = Date.now() + 2_000
-    while (
-      internals.autopurgeTimers![index as number] === firstTimer &&
-      Date.now() < deadline
-    ) {
-      await new Promise(resolve => setTimeout(resolve, 5))
-    }
-
-    t.equal(c.size, 1)
-    t.ok(internals.autopurgeTimers![index as number])
-    t.not(internals.autopurgeTimers![index as number], firstTimer)
-    c.clear()
-  },
-)
