@@ -1,15 +1,17 @@
 import t from 'tap'
 import { LRUCache, type BackgroundFetch } from '../dist/esm/node/index.js'
 
+const clock = t.clock
+clock.advance(1)
+clock.enter()
+
 t.test('background fetch size tests', async t => {
   const res: Record<number, (n: number) => void> = {}
-  let now = 1
   const c = new LRUCache<number, number>({
     maxSize: 10,
     sizeCalculation: () => 5,
     allowStale: true,
     ttl: 10,
-    perf: { now: () => now },
     // never returns on purpose
     fetchMethod: k =>
       new Promise<number>(r => {
@@ -22,7 +24,7 @@ t.test('background fetch size tests', async t => {
   c.set(1, 1)
   t.match(await p1, new Error('replaced'))
   t.equal(c.calculatedSize, 5)
-  now += 100
+  clock.advance(100)
   t.equal(c.getRemainingTTL(1), -90)
   // verify correct behavior of a fetch that shadows a stale value
   const p = c.fetch(1)
@@ -209,12 +211,10 @@ t.test('mutated size is ignored without size tracking', async t => {
 t.test('mutated size is ignored for stale refresh', async t => {
   const deferred = Promise.withResolvers<number>()
   let fetchCalls = 0
-  let now = 1
   const c = new LRUCache<number, number>({
     maxSize: 10,
     sizeCalculation: () => 5,
     ttl: 10,
-    perf: { now: () => now },
     backgroundFetchSize: 2,
     fetchMethod: async () => {
       fetchCalls++
@@ -223,7 +223,7 @@ t.test('mutated size is ignored for stale refresh', async t => {
   })
 
   c.set(1, 1)
-  now += 100
+  clock.advance(100)
   c.backgroundFetchSize = '2' as unknown as number
   const refresh = c.fetch(1)
 
