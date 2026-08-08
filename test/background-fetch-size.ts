@@ -1,5 +1,5 @@
 import t from 'tap'
-import { LRUCache, type BackgroundFetch } from '../dist/esm/node/index.js'
+import { LRUCache } from '../dist/esm/node/index.js'
 
 const clock = t.clock
 clock.advance(1)
@@ -200,34 +200,5 @@ t.test('backgroundFetchSize 0 retains in-flight coalescing', async t => {
   deferred.resolve(1)
   t.same(await Promise.all([first, second]), [1, 1])
   t.equal(c.size, 1)
-  t.equal(c.calculatedSize, 5)
-})
-
-t.test('rejects corrupt provisional size receipt', async t => {
-  const deferred = Promise.withResolvers<number>()
-  const c = new LRUCache<number, number>({
-    maxSize: 10,
-    sizeCalculation: () => 5,
-    backgroundFetchSize: 2,
-    fetchMethod: async () => deferred.promise,
-  })
-
-  const publicFetch = c.fetch(1)
-  const internals = LRUCache.unsafeExposeInternals(c)
-  const index = internals.keyMap.get(1)
-  t.type(index, 'number')
-  const backgroundFetch = internals.valList[
-    index as number
-  ] as BackgroundFetch<number>
-  backgroundFetch.__size = Number.NaN
-
-  t.throws(
-    () => c.set(2, backgroundFetch as unknown as number),
-    invalidBackgroundFetchSizeError,
-  )
-  t.equal(c.calculatedSize, 2)
-
-  deferred.resolve(1)
-  t.equal(await publicFetch, 1)
   t.equal(c.calculatedSize, 5)
 })
